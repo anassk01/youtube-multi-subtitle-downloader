@@ -365,6 +365,22 @@
                 </div>
             `;
             content.appendChild(formatDiv);
+            //batch select
+            if (tracks.length > 0) {
+                const selectAllDiv = document.createElement('div');
+                selectAllDiv.style.marginBottom = '15px';
+                const selectAllBtn = document.createElement('button');
+                selectAllBtn.textContent = 'Select All Subtitles';
+                selectAllBtn.style.cssText = 'background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;';
+                selectAllBtn.onclick = () => {
+                    const checkboxes = content.querySelectorAll('input[type="checkbox"][data-lang]');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = true;
+                    });
+                };
+                selectAllDiv.appendChild(selectAllBtn);
+                content.appendChild(selectAllDiv);
+            }
 
             // Tracks list
             if (tracks.length > 0) {
@@ -537,14 +553,18 @@
             `;
 
             ui.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    Selected: <span id="yt-sub-count">0</span> videos
-                </div>
-                <div style="display: flex; gap: 10px;">
-                    <button id="yt-sub-download" style="background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Download</button>
-                    <button id="yt-sub-cancel" style="background: #909090; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Cancel</button>
-                </div>
-            `;
+    <div style="margin-bottom: 10px;">
+        Selected: <span id="yt-sub-count">0</span> videos
+    </div>
+    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <button id="yt-sub-select-all" style="background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Select All</button>
+        <button id="yt-sub-select-x" style="background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Select First X</button>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <button id="yt-sub-download" style="background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Download</button>
+        <button id="yt-sub-cancel" style="background: #909090; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Cancel</button>
+    </div>
+`;
 
             document.body.appendChild(ui);
 
@@ -559,6 +579,38 @@
             document.getElementById('yt-sub-cancel').onclick = () => {
                 this.deactivateSelection();
             };
+
+
+            document.getElementById('yt-sub-select-all').onclick = () => {
+                const checkboxes = document.querySelectorAll('.yt-sub-checkbox');
+                checkboxes.forEach(checkbox => {
+                    if (!checkbox.checked) {
+                        checkbox.click();
+                    }
+                });
+            };
+
+            document.getElementById('yt-sub-select-x').onclick = () => {
+                const input = prompt('How many videos would you like to select?');
+                const number = parseInt(input);
+
+                if (!isNaN(number) && number > 0) {
+                    const checkboxes = document.querySelectorAll('.yt-sub-checkbox');
+                    checkboxes.forEach((checkbox, index) => {
+                        if (index < number) {
+                            if (!checkbox.checked) {
+                                checkbox.click();
+                            }
+                        } else if (checkbox.checked) {
+                            checkbox.click();
+                        }
+                    });
+                } else if (input !== null) {
+                    UIComponents.showToast('Please enter a valid number');
+                }
+            };
+
+
         }
 
         updateSelectionCount() {
@@ -640,6 +692,22 @@
                 </div>
             `;
             content.appendChild(formatDiv);
+            //batch Select
+            const selectAllDiv = document.createElement('div');
+            selectAllDiv.style.marginBottom = '15px';
+            const selectAllBtn = document.createElement('button');
+            selectAllBtn.textContent = 'Select All Subtitles';
+            selectAllBtn.style.cssText = 'background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;';
+            selectAllBtn.onclick = () => {
+                const checkboxes = content.querySelectorAll('input[type="checkbox"][data-video-id]');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+            };
+            selectAllDiv.appendChild(selectAllBtn);
+            content.appendChild(selectAllDiv);
+
+
 
             // Videos and their subtitles
             videos.forEach(video => {
