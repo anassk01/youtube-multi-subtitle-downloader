@@ -1,36 +1,18 @@
 // ==UserScript==
-// @name          YouTube Multi Subtitle Downloader
-// @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Download subtitles from YouTube videos with enhanced features
-// @author       anassk
-// @match        https://www.youtube.com/*
-// @grant        GM_xmlhttpRequest
+// @name          YouTube Smart Subtitle Downloader
+// @namespace     http://tampermonkey.net/
+// @version       1.1
+// @description   Enhanced YouTube subtitle downloader with smart selection and improved code structure
+// @author        anassk
+// @match         https://www.youtube.com/*
+// @grant         GM_xmlhttpRequest
+// @grant         GM_registerMenuCommand
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    // Core Types
-    const Types = {
-        SubtitleTrack: class {
-            constructor(langCode, langName, baseUrl) {
-                this.languageCode = langCode;
-                this.languageName = langName;
-                this.baseUrl = baseUrl;
-            }
-        },
-
-        VideoData: class {
-            constructor(id, title) {
-                this.id = id;
-                this.title = title;
-                this.subtitles = [];
-            }
-        }
-    };
-
-    // Configuration
+    // Core configuration
     const CONFIG = {
         MESSAGES: {
             NO_SUBTITLE: 'No Subtitles Available',
@@ -43,41 +25,79 @@
                 NO_VIDEO: 'No video found'
             }
         },
-
-        SELECTORS: {
-            VIDEO_CONTAINER: '#above-the-fold',
-            VIDEO_ELEMENTS: 'ytd-video-renderer, ytd-compact-video-renderer',
-            THUMBNAIL: 'a#thumbnail',
-            VIDEO_TITLE: '#video-title'
-        },
-
-        TIMINGS: {
-            PAGE_CHECK_INTERVAL: 1000,
-            DOWNLOAD_DELAY: 500,
-            COPY_SUCCESS_DURATION: 2000
-        },
-
         FORMATS: {
             SRT: 'srt',
             TEXT: 'txt'
+        },
+        TIMINGS: {
+            DOWNLOAD_DELAY: 500,
+        },
+        SELECTORS: {
+            VIDEO_ELEMENTS: [
+                'ytd-playlist-panel-video-renderer',
+                'ytd-playlist-video-renderer',
+                'yt-lockup-view-model',
+                'ytd-rich-item-renderer',
+                'ytd-video-renderer',
+                'ytd-compact-video-renderer',
+                'ytd-grid-video-renderer'
+            ].join(','),
+            TITLE_SELECTORS: [
+                '#video-title',
+                'a#video-title',
+                'span#video-title',
+                '[title]'
+            ]
+        },
+        STYLES: {
+            CHECKBOX_WRAPPER: `
+                position: absolute;
+                left: 5px;
+                top: 0;
+                bottom: 0;
+                width: 20px;
+                display: flex;
+                align-items: center;
+                z-index: 1;
+            `,
+            CHECKBOX: `
+                width: 16px;
+                height: 16px;
+                cursor: pointer;
+                margin: 0;
+            `,
+            DIALOG: `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 9999;
+            `,
+            DIALOG_CONTENT: `
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                min-width: 300px;
+                max-width: 600px;
+                max-height: 80vh;
+                overflow-y: auto;
+                color: black;
+            `
         }
     };
 
-    // Core Utilities
+    // Utility functions
     const Utils = {
         createError: (message, code, originalError = null) => {
             const error = new Error(message);
             error.code = code;
             error.originalError = originalError;
             return error;
-        },
-
-        debounce: (func, wait) => {
-            let timeout;
-            return function(...args) {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => func.apply(this, args), wait);
-            };
         },
 
         safeJSONParse: (str, fallback = null) => {
@@ -91,60 +111,13 @@
 
         sanitizeFileName: (name) => {
             return name.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').substring(0, 100);
-        }
+        },
+
+        delay: (ms) => new Promise(resolve => setTimeout(resolve, ms))
     };
 
-    // Event Bus for communication between modules
-    class EventBus {
-        constructor() {
-            this.events = new Map();
-        }
-
-        on(event, callback) {
-            if (!this.events.has(event)) {
-                this.events.set(event, new Set());
-            }
-            this.events.get(event).add(callback);
-            return () => this.off(event, callback);
-        }
-
-        off(event, callback) {
-            const callbacks = this.events.get(event);
-            if (callbacks) {
-                callbacks.delete(callback);
-            }
-        }
-
-        emit(event, data) {
-            const callbacks = this.events.get(event);
-            if (callbacks) {
-                callbacks.forEach(callback => {
-                    try {
-                        callback(data);
-                    } catch (error) {
-                        console.error(`Error in event ${event}:`, error);
-                    }
-                });
-            }
-        }
-    }
-
-    // Export to global scope for other modules
-    window.YTSubtitles = {
-        Types,
-        CONFIG,
-        Utils,
-        EventBus: new EventBus()
-    };
-})();
-
-
-(function() {
-    'use strict';
-
-    const { Types, CONFIG, Utils } = window.YTSubtitles;
-
-    class SubtitleProcessor {
+    // Subtitle Service - New centralized service for subtitle operations
+    class SubtitleService {
         static async fetchSubtitleTracks(videoId) {
             try {
                 const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`);
@@ -158,11 +131,11 @@
 
                 if (!captionTracks?.length) return null;
 
-                return captionTracks.map(track => new Types.SubtitleTrack(
-                    track.languageCode,
-                    track.name.simpleText,
-                    track.baseUrl
-                ));
+                return captionTracks.map(track => ({
+                    languageCode: track.languageCode,
+                    languageName: track.name.simpleText,
+                    baseUrl: track.baseUrl
+                }));
             } catch (error) {
                 throw Utils.createError('Failed to fetch subtitles', 'SUBTITLE_FETCH_ERROR', error);
             }
@@ -230,239 +203,101 @@
             return `${pad(hours)}:${pad(minutes)}:${pad(secs)},${ms}`;
         }
 
-        static downloadSubtitle(content, filename) {
-            const blob = new Blob(['\ufeff' + content], { type: 'text/plain;charset=utf-8' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
+        static async downloadSubtitles(tracks, format) {
+            const loading = UIComponents.showLoading('Downloading subtitles...');
 
-            link.href = url;
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
+            try {
+                for (const track of tracks) {
+                    const content = await this.getSubtitleContent(track, format);
+                    const filename = `${Utils.sanitizeFileName(track.videoTitle)}_${track.languageCode}.${format}`;
+
+                    const blob = new Blob(['\ufeff' + content], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+
+                    link.href = url;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+
+                    await Utils.delay(CONFIG.TIMINGS.DOWNLOAD_DELAY);
+                }
+            } catch (error) {
+                throw Utils.createError('Failed to download subtitles', 'DOWNLOAD_ERROR', error);
+            } finally {
+                loading.remove();
+            }
         }
 
-        static async copyToClipboard(content) {
+        static async copySubtitles(tracks, format, videoTitle = '') {
+            const loading = UIComponents.showLoading('Copying subtitles...');
+
             try {
+                let content = '';
+                for (const track of tracks) {
+                    const subtitleContent = await this.getSubtitleContent(track, format);
+                    const title = videoTitle ? `${videoTitle} - ` : '';
+                    content += `=== ${title}${track.languageName} ===\n${subtitleContent}\n\n`;
+                }
+
                 await navigator.clipboard.writeText(content);
-                return true;
+                UIComponents.showToast(CONFIG.MESSAGES.COPY_SUCCESS);
             } catch (error) {
-                throw Utils.createError('Failed to copy to clipboard', 'CLIPBOARD_ERROR', error);
+                throw Utils.createError('Failed to copy subtitles', 'COPY_ERROR', error);
+            } finally {
+                loading.remove();
             }
         }
     }
 
-    // Export to global scope
-    window.YTSubtitles.SubtitleProcessor = SubtitleProcessor;
-})();
-
-(function() {
-    'use strict';
-
-    const { CONFIG, Utils } = window.YTSubtitles;
-
-    // UI Styles
-    const STYLES = `
-        .yt-sub-btn {
-            background: #065fd4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-size: 14px;
-            margin: 5px;
-            transition: background 0.2s;
-        }
-
-        .yt-sub-btn:hover {
-            background: #0056c7;
-        }
-
-        .yt-sub-dialog {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            z-index: 10000;
-            max-height: 80vh;
-            overflow-y: auto;
-            min-width: 300px;
-            color: black;
-        }
-
-        .yt-sub-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 9999;
-        }
-
-        .yt-sub-track {
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-
-        .yt-sub-loading {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-            color: white;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .yt-sub-spinner {
-            width: 30px;
-            height: 30px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #065fd4;
-            border-radius: 50%;
-            animation: yt-sub-spin 1s linear infinite;
-        }
-
-        @keyframes yt-sub-spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    `;
-
+    // UI Components
     class UIComponents {
-        static injectStyles() {
-            const style = document.createElement('style');
-            style.textContent = STYLES;
-            document.head.appendChild(style);
-        }
-
-        static createButton(text, onClick, className = '') {
-            const button = document.createElement('button');
-            button.className = `yt-sub-btn ${className}`;
-            button.textContent = text;
-            button.addEventListener('click', onClick);
-            return button;
-        }
-
-        static createDialog({ title, content, onClose }) {
-            const overlay = document.createElement('div');
-            overlay.className = 'yt-sub-overlay';
-
+        static showDialog(title, content, onClose) {
             const dialog = document.createElement('div');
-            dialog.className = 'yt-sub-dialog';
+            dialog.style.cssText = CONFIG.STYLES.DIALOG;
+
+            const dialogContent = document.createElement('div');
+            dialogContent.style.cssText = CONFIG.STYLES.DIALOG_CONTENT;
 
             const header = document.createElement('div');
-            header.style.display = 'flex';
-            header.style.justifyContent = 'space-between';
-            header.style.marginBottom = '15px';
-
-            const titleElem = document.createElement('h2');
-            titleElem.textContent = title;
-            titleElem.style.margin = '0';
-
-            const closeBtn = this.createButton('×', () => {
-                onClose();
-                overlay.remove();
-            }, 'close-btn');
-            closeBtn.style.padding = '5px 10px';
-
-            header.appendChild(titleElem);
-            header.appendChild(closeBtn);
-            dialog.appendChild(header);
-            dialog.appendChild(content);
-            overlay.appendChild(dialog);
-
-            return overlay;
-        }
-
-        static createSubtitleDialog(tracks, options = {}) {
-            const content = document.createElement('div');
-
-            // Format selector
-            const formatDiv = document.createElement('div');
-            formatDiv.innerHTML = `
-                <div style="margin-bottom: 15px;">
-                    <label style="margin-right: 10px;">
-                        <input type="radio" name="format" value="srt" checked> SRT
-                    </label>
-                    <label>
-                        <input type="radio" name="format" value="txt"> Plain Text
-                    </label>
-                </div>
+            header.style.cssText = `
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 15px;
             `;
 
-            // Tracks list
-            const tracksList = document.createElement('div');
-            tracks.forEach(track => {
-                const trackDiv = document.createElement('div');
-                trackDiv.className = 'yt-sub-track';
-                trackDiv.innerHTML = `
-                    <label>
-                        <input type="checkbox" value="${track.languageCode}">
-                        ${track.languageName}
-                    </label>
-                `;
-                tracksList.appendChild(trackDiv);
-            });
+            const titleElem = document.createElement('h2');
+            titleElem.style.margin = '0';
+            titleElem.textContent = title;
 
-            // Action buttons
-            const actions = document.createElement('div');
-            actions.style.display = 'flex';
-            actions.style.justifyContent = 'flex-end';
-            actions.style.gap = '10px';
-            actions.style.marginTop = '20px';
+            const closeButton = document.createElement('button');
+            closeButton.textContent = '×';
+            closeButton.style.cssText = `
+                background: none;
+                border: none;
+                font-size: 24px;
+                cursor: pointer;
+                padding: 0 5px;
+            `;
+            closeButton.onclick = () => {
+                dialog.remove();
+                if (onClose) onClose();
+            };
 
-            if (options.onDownload) {
-                actions.appendChild(this.createButton('Download', options.onDownload));
-            }
-            if (options.onCopy) {
-                actions.appendChild(this.createButton('Copy', options.onCopy));
-            }
+            header.appendChild(titleElem);
+            header.appendChild(closeButton);
+            dialogContent.appendChild(header);
+            dialogContent.appendChild(content);
+            dialog.appendChild(dialogContent);
 
-            content.appendChild(formatDiv);
-            content.appendChild(tracksList);
-            content.appendChild(actions);
-
-            return content;
+            document.body.appendChild(dialog);
+            return dialog;
         }
 
-        static showLoading(message = CONFIG.MESSAGES.LOADING) {
-            const overlay = document.createElement('div');
-            overlay.className = 'yt-sub-overlay';
-
-            const loading = document.createElement('div');
-            loading.className = 'yt-sub-loading';
-
-            const spinner = document.createElement('div');
-            spinner.className = 'yt-sub-spinner';
-
-            const text = document.createElement('div');
-            text.textContent = message;
-
-            loading.appendChild(spinner);
-            loading.appendChild(text);
-            overlay.appendChild(loading);
-
-            document.body.appendChild(overlay);
-            return overlay;
-        }
-
-        static removeLoading(loadingElement) {
-            if (loadingElement && loadingElement.parentElement) {
-                loadingElement.remove();
-            }
-        }
-
-        static showToast(message, duration = 2000) {
+        static showToast(message, duration = 3000) {
             const toast = document.createElement('div');
             toast.style.cssText = `
                 position: fixed;
@@ -477,908 +312,542 @@
             `;
             toast.textContent = message;
             document.body.appendChild(toast);
-
             setTimeout(() => toast.remove(), duration);
         }
-    }
 
-    // Export to global scope
-    window.YTSubtitles.UIComponents = UIComponents;
+        static showLoading(message = CONFIG.MESSAGES.LOADING) {
+            const overlay = document.createElement('div');
+            overlay.style.cssText = CONFIG.STYLES.DIALOG;
 
-    // Initialize styles
-    UIComponents.injectStyles();
-})();
+            const content = document.createElement('div');
+            content.style.textAlign = 'center';
+            content.style.color = 'white';
 
+            const spinner = document.createElement('div');
+            spinner.style.cssText = `
+                width: 40px;
+                height: 40px;
+                border: 4px solid #f3f3f3;
+                border-top: 4px solid #3498db;
+                border-radius: 50%;
+                margin: 0 auto 10px;
+                animation: spin 1s linear infinite;
+            `;
 
-(function() {
-    'use strict';
-
-    const { Types, CONFIG, Utils, UIComponents, SubtitleProcessor } = window.YTSubtitles;
-
-class VideoManager {
-    constructor() {
-        this.singleMode = null;
-        this.bulkMode = null;
-        this.lastPageType = null;
-        this.initialized = false;
-        console.debug('[VideoManager] Created new instance');
-        this.initialize();
-    }
-
-    initialize() {
-        if (this.initialized) {
-            console.debug('[VideoManager] Already initialized, skipping');
-            return;
-        }
-
-        console.debug('[VideoManager] Initializing');
-        // Always initialize bulkMode
-        this.bulkMode = new BulkVideoMode();
-        this.bulkMode.initialize();
-
-        this.handlePageChange();
-        this.setupPageObserver();
-        this.initialized = true;
-    }
-
-    setupPageObserver() {
-        console.debug('[VideoManager] Setting up page observer');
-        const observer = new MutationObserver(
-            Utils.debounce(() => {
-                const currentPageType = this.getPageType();
-                if (currentPageType !== this.lastPageType) {
-                    console.debug(`[VideoManager] Page type changed from ${this.lastPageType} to ${currentPageType}`);
-                    this.handlePageChange();
-                }
-            }, 500)
-        );
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        document.addEventListener('yt-navigate-finish', () => {
-            console.debug('[VideoManager] Navigation event detected');
-            this.handlePageChange();
-        });
-    }
-
-    handlePageChange() {
-        const pageType = this.getPageType();
-        console.debug(`[VideoManager] Handling page change. Current: ${pageType}, Last: ${this.lastPageType}`);
-
-        // Handle SingleVideoMode
-        if (pageType === 'watch') {
-            if (!this.singleMode) {
-                console.debug('[VideoManager] Initializing SingleVideoMode');
-                this.singleMode = new SingleVideoMode();
-                this.singleMode.initialize();
-            }
-        } else {
-            if (this.singleMode) {
-                console.debug('[VideoManager] Cleaning up SingleVideoMode');
-                this.singleMode.cleanup();
-                this.singleMode = null;
-            }
-        }
-
-        // BulkMode is always active, just make sure it's initialized
-        if (!this.bulkMode) {
-            console.debug('[VideoManager] Reinitializing BulkVideoMode');
-            this.bulkMode = new BulkVideoMode();
-            this.bulkMode.initialize();
-        }
-
-        this.lastPageType = pageType;
-    }
-
-    getPageType() {
-        const path = window.location.pathname;
-        if (path === '/watch') return 'watch';
-        if (path === '/results') return 'search';
-        if (path === '/') return 'home';
-        return 'other';
-    }
-}
-class SingleVideoMode {
-    constructor() {
-        this.videoId = null;
-        this.subtitleTracks = null;
-        this.downloadButton = null;
-        this.currentVideoUrl = null;
-        this.videoObserver = null;
-        console.debug('[SingleVideoMode] Created new instance');
-    }
-
-    async initialize() {
-        console.debug('[SingleVideoMode] Initializing');
-        this.setupVideoObserver();
-        await this.initializeButton();
-    }
-
-    setupVideoObserver() {
-        console.debug('[SingleVideoMode] Setting up video observer');
-        // Watch for changes to the video player
-        this.videoObserver = new MutationObserver(
-            Utils.debounce(() => {
-                const newVideoUrl = window.location.href;
-                if (this.currentVideoUrl !== newVideoUrl) {
-                    console.debug(`[SingleVideoMode] Video URL changed from ${this.currentVideoUrl} to ${newVideoUrl}`);
-                    this.handleVideoChange();
-                }
-            }, 500)
-        );
-
-        const playerApp = document.querySelector('ytd-app');
-        if (playerApp) {
-            this.videoObserver.observe(playerApp, {
-                childList: true,
-                subtree: true,
-                attributes: true,
-                attributeFilter: ['video-id']
-            });
-        }
-
-        // Also listen for YouTube's navigation events
-        document.addEventListener('yt-navigate-finish', () => {
-            console.debug('[SingleVideoMode] Navigation event detected');
-            this.handleVideoChange();
-        });
-    }
-
-    async handleVideoChange() {
-        console.debug('[SingleVideoMode] Handling video change');
-        const newVideoId = this.extractVideoId();
-        const newVideoUrl = window.location.href;
-
-        if (this.videoId !== newVideoId || this.currentVideoUrl !== newVideoUrl) {
-            console.debug(`[SingleVideoMode] Video changed from ${this.videoId} to ${newVideoId}`);
-            this.videoId = newVideoId;
-            this.currentVideoUrl = newVideoUrl;
-            this.subtitleTracks = null;
-            await this.initializeButton();
-        }
-    }
-
-    async initializeButton() {
-        console.debug('[SingleVideoMode] Initializing button');
-        this.videoId = this.extractVideoId();
-        if (!this.videoId) {
-            console.debug('[SingleVideoMode] No video ID found');
-            return;
-        }
-
-        // Remove existing button if present
-        if (this.downloadButton) {
-            console.debug('[SingleVideoMode] Removing existing button');
-            this.downloadButton.remove();
-        }
-
-        await this.addDownloadButton();
-    }
-
-    extractVideoId() {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('v');
-    }
-
-    async addDownloadButton() {
-        try {
-            const container = await this.waitForElement(CONFIG.SELECTORS.VIDEO_CONTAINER);
-            if (!container) {
-                console.debug('[SingleVideoMode] Container not found');
-                return;
+            if (!document.getElementById('spinner-style')) {
+                const style = document.createElement('style');
+                style.id = 'spinner-style';
+                style.textContent = '@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }';
+                document.head.appendChild(style);
             }
 
-            // Check if a button already exists and remove it
-            const existingButton = container.querySelector('.yt-sub-btn');
-            if (existingButton) {
-                existingButton.remove();
-            }
+            content.appendChild(spinner);
+            content.appendChild(document.createTextNode(message));
+            overlay.appendChild(content);
+            document.body.appendChild(overlay);
 
-            this.downloadButton = UIComponents.createButton(
-                'Download Subtitles',
-                () => this.handleButtonClick()
-            );
-
-            container.appendChild(this.downloadButton);
-            console.debug('[SingleVideoMode] Button added successfully');
-        } catch (error) {
-            console.error('[SingleVideoMode] Failed to add download button:', error);
-        }
-    }
-
-
-    async handleButtonClick() {
-        console.debug('[SingleVideoMode] Button clicked for video:', this.videoId);
-        const loading = UIComponents.showLoading();
-
-        try {
-            // Always fetch fresh subtitle tracks when button is clicked
-            this.subtitleTracks = await SubtitleProcessor.fetchSubtitleTracks(this.videoId);
-
-            if (!this.subtitleTracks?.length) {
-                UIComponents.showToast(CONFIG.MESSAGES.NO_SUBTITLE);
-                return;
-            }
-
-            this.showSubtitleDialog();
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
-            console.error('[SingleVideoMode] Failed to fetch subtitles:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
-        }
-    }
-
-    showSubtitleDialog() {
-        const content = UIComponents.createSubtitleDialog(
-            this.subtitleTracks,
-            {
-                onDownload: () => this.handleDownload(),
-                onCopy: () => this.handleCopy()
-            }
-        );
-
-        const dialog = UIComponents.createDialog({
-            title: CONFIG.MESSAGES.HAVE_SUBTITLE,
-            content,
-            onClose: () => dialog.remove()
-        });
-
-        document.body.appendChild(dialog);
-    }
-
-    async handleDownload() {
-        const tracks = this.getSelectedTracks();
-        const format = this.getSelectedFormat();
-
-        if (!tracks.length) {
-            UIComponents.showToast('Please select at least one subtitle');
-            return;
+            return overlay;
         }
 
-        const loading = UIComponents.showLoading('Downloading subtitles...');
+        static createSubtitleDialog(tracks, format = CONFIG.FORMATS.SRT, onDownload, onCopy) {
+            const content = document.createElement('div');
 
-        try {
-            for (const track of tracks) {
-                const content = await SubtitleProcessor.getSubtitleContent(track, format);
-                const filename = `${Utils.sanitizeFileName(document.title)}_${track.languageCode}.${format}`;
-                SubtitleProcessor.downloadSubtitle(content, filename);
-                await new Promise(resolve => setTimeout(resolve, CONFIG.TIMINGS.DOWNLOAD_DELAY));
-            }
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
-            console.error('Download error:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
-        }
-    }
+            // Format selector
+            const formatDiv = document.createElement('div');
+            formatDiv.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <label style="margin-right: 10px;">
+                        <input type="radio" name="format" value="srt" ${format === 'srt' ? 'checked' : ''}> SRT
+                    </label>
+                    <label>
+                        <input type="radio" name="format" value="txt" ${format === 'txt' ? 'checked' : ''}> Plain Text
+                    </label>
+                </div>
+            `;
+            content.appendChild(formatDiv);
 
-    async handleCopy() {
-        const tracks = this.getSelectedTracks();
-        const format = this.getSelectedFormat();
-
-        if (!tracks.length) {
-            UIComponents.showToast('Please select at least one subtitle');
-            return;
-        }
-
-        const loading = UIComponents.showLoading('Copying subtitles...');
-
-        try {
-            let content = '';
-            for (const track of tracks) {
-                const subtitleContent = await SubtitleProcessor.getSubtitleContent(track, format);
-                content += `=== ${track.languageName} ===\n${subtitleContent}\n\n`;
-            }
-
-            await SubtitleProcessor.copyToClipboard(content);
-            UIComponents.showToast(CONFIG.MESSAGES.COPY_SUCCESS);
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.COPY);
-            console.error('Copy error:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
-        }
-    }
-
-    getSelectedTracks() {
-        const checkboxes = document.querySelectorAll('.yt-sub-track input:checked');
-        return Array.from(checkboxes)
-            .map(cb => this.subtitleTracks
-                .find(track => track.languageCode === cb.value))
-            .filter(Boolean);
-    }
-
-    getSelectedFormat() {
-        return document.querySelector('input[name="format"]:checked').value;
-    }
-
-    waitForElement(selector, timeout = 5000) {
-        return new Promise((resolve, reject) => {
-            const element = document.querySelector(selector);
-            if (element) {
-                resolve(element);
-                return;
-            }
-
-            const observer = new MutationObserver((mutations, obs) => {
-                const element = document.querySelector(selector);
-                if (element) {
-                    obs.disconnect();
-                    resolve(element);
-                }
-            });
-
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-
-            setTimeout(() => {
-                observer.disconnect();
-                reject(new Error(`Element ${selector} not found`));
-            }, timeout);
-        });
-    }
-
-    cleanup() {
-        console.debug('[SingleVideoMode] Cleaning up');
-        if (this.downloadButton) {
-            this.downloadButton.remove();
-        }
-        if (this.videoObserver) {
-            this.videoObserver.disconnect();
-        }
-        this.videoId = null;
-        this.subtitleTracks = null;
-        this.currentVideoUrl = null;
-    }
-}
-
-
-class BulkVideoMode {
-    constructor() {
-        this.selectedVideos = new Map();
-        this.isProcessing = false;
-        this.selectionControls = null;
-        this.videoObserver = null;
-        this.isSelectionMode = false;
-        this.initialized = false;
-        console.debug('[BulkVideoMode] Created new instance');
-    }
-
-    initialize() {
-        if (this.initialized) {
-            console.debug('[BulkVideoMode] Already initialized, skipping');
-            return;
-        }
-
-        console.debug('[BulkVideoMode] Initializing');
-        this.createControls();
-        this.initialized = true;
-    }
-
-    createControls() {
-        console.debug('[BulkVideoMode] Creating controls');
-        // Create and add the initial "Select Videos" button
-        const bulkButton = UIComponents.createButton(
-            'Get Videos Sub',
-            () => this.toggleSelectionMode(),
-            'yt-sub-bulk-btn'
-        );
-
-        bulkButton.style.cssText = `
-            position: fixed;
-            right: 20px;
-            top: 80px;
-            z-index: 9999;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        `;
-
-        // Create select all control
-        const selectAllContainer = document.createElement('div');
-        selectAllContainer.style.cssText = `
-            position: fixed;
-            right: 20px;
-            top: 130px;
-            z-index: 9999;
-            background: white;
-            padding: 8px 16px;
-            border-radius: 4px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            display: none;
-        `;
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.id = 'select-all';
-        checkbox.style.marginRight = '8px';
-        checkbox.addEventListener('change', (e) => this.handleSelectAll(e.target.checked));
-
-        const label = document.createElement('label');
-        label.htmlFor = 'select-all';
-        label.textContent = 'Select All';
-
-        selectAllContainer.appendChild(checkbox);
-        selectAllContainer.appendChild(label);
-
-        this.selectionControls = {
-            button: bulkButton,
-            selectAllContainer: selectAllContainer
-        };
-
-        document.body.appendChild(bulkButton);
-        document.body.appendChild(selectAllContainer);
-    }
-
-    toggleSelectionMode() {
-        console.debug('[BulkVideoMode] Toggling selection mode. Current:', this.isSelectionMode);
-        if (!this.isSelectionMode) {
-            this.startSelection();
-        } else {
-            this.processSelected();
-        }
-    }
-
-    startSelection() {
-        if (this.isSelectionMode) {
-            console.debug('[BulkVideoMode] Already in selection mode, skipping');
-            return;
-        }
-
-        console.debug('[BulkVideoMode] Starting selection mode');
-        this.isSelectionMode = true;
-        this.selectionControls.button.textContent = "Download Subtitles";
-        this.selectionControls.selectAllContainer.style.display = 'flex';
-        this.setupVideoObserver();
-        this.processVideoElements();
-    }
-
-    processSelected() {
-        if (this.selectedVideos.size === 0) {
-            UIComponents.showToast('Please select at least one video');
-            return;
-        }
-
-        // Process videos
-        this.processSelectedVideos();
-    }
-
-    handleSelectAll(checked) {
-        if (this.isProcessing) return;
-
-        const checkboxes = document.querySelectorAll('.yt-sub-checkbox');
-        checkboxes.forEach(checkbox => {
-            const videoElement = checkbox.closest(CONFIG.SELECTORS.VIDEO_ELEMENTS);
-            if (videoElement) {
-                const videoId = this.extractVideoId(videoElement);
-                checkbox.checked = checked;
-
-                if (checked && videoId) {
-                    this.selectedVideos.set(videoId, {
-                        title: this.extractVideoTitle(videoElement),
-                        id: videoId
-                    });
-                } else if (!checked) {
-                    this.selectedVideos.delete(videoId);
-                }
-            }
-        });
-    }
-
-    updateButtonState() {
-        if (!this.selectionControls?.button) return;
-
-        const hasSelectedItems = this.selectedVideos.size > 0;
-
-        if (this.isProcessing) {
-            this.selectionControls.button.textContent = 'Processing...';
-            this.selectionControls.button.disabled = true;
-        } else if (hasSelectedItems) {
-            this.selectionControls.button.textContent = 'Get Subtitles';
-            this.selectionControls.button.disabled = false;
-        } else {
-            this.selectionControls.button.textContent = 'Select Videos Sub';
-            this.selectionControls.button.disabled = false;
-        }
-    }
-
-    setupVideoObserver() {
-        console.debug('[BulkVideoMode] Setting up video observer');
-        if (this.videoObserver) {
-            console.debug('[BulkVideoMode] Disconnecting existing observer');
-            this.videoObserver.disconnect();
-        }
-
-        this.videoObserver = new MutationObserver((mutations) => {
-            const shouldProcess = mutations.some(mutation => {
-                return Array.from(mutation.addedNodes).some(node => {
-                    if (node.nodeType === Node.ELEMENT_NODE) {
-                        const matches = node.matches?.(CONFIG.SELECTORS.VIDEO_ELEMENTS) ||
-                            node.querySelector?.(CONFIG.SELECTORS.VIDEO_ELEMENTS);
-                        if (matches) {
-                            console.debug('[BulkVideoMode] New video element detected');
-                        }
-                        return matches;
-                    }
-                    return false;
-                });
-            });
-
-            if (shouldProcess && this.isSelectionMode) {
-                console.debug('[BulkVideoMode] Processing new video elements');
-                this.processVideoElements();
-            }
-        });
-
-        const targets = [
-            document.querySelector('#content'),
-            document.querySelector('ytd-watch-next-secondary-results-renderer'),
-            document.querySelector('#related')
-        ].filter(Boolean);
-
-        targets.forEach(target => {
-            if (target) {
-                this.videoObserver.observe(target, {
-                    childList: true,
-                    subtree: true
-                });
-            }
-        });
-
-        if (this.isSelectionMode) {
-            this.processVideoElements();
-        }
-        console.debug('[BulkVideoMode] Video observer setup complete');
-    }
-
-    processVideoElements() {
-        console.debug('[BulkVideoMode] Processing video elements. Selection mode:', this.isSelectionMode);
-        if (!this.isSelectionMode) {
-            console.debug('[BulkVideoMode] Skipping processing - not in selection mode');
-            return;
-        }
-
-        const selectors = [
-            'ytd-video-renderer',
-            'ytd-compact-video-renderer',
-            '#dismissible'
-        ].join(', ');
-
-        const videoElements = document.querySelectorAll(selectors);
-        console.debug(`[BulkVideoMode] Found ${videoElements.length} video elements`);
-        videoElements.forEach(element => this.addCheckboxToVideo(element));
-    }
-
-    addCheckboxToVideo(element) {
-        if (element.querySelector('.yt-sub-checkbox')) {
-            console.debug('[BulkVideoMode] Checkbox already exists for element');
-            return;
-        }
-
-        const videoId = this.extractVideoId(element);
-        if (!videoId) {
-            console.debug('[BulkVideoMode] No video ID found for element');
-            return;
-        }
-
-        const container = element.querySelector('#dismissible') || element;
-        if (!container) {
-            console.debug('[BulkVideoMode] No container found for checkbox');
-            return;
-        }
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'yt-sub-checkbox';
-
-        const isCompact = element.tagName.toLowerCase() === 'ytd-compact-video-renderer';
-        checkbox.style.cssText = `
-            position: absolute;
-            left: -25px;
-            top: ${isCompact ? '5px' : '20px'};
-            z-index: 9999;
-            cursor: pointer;
-            width: 20px;
-            height: 20px;
-        `;
-
-        checkbox.addEventListener('change', (e) => {
-            console.debug(`[BulkVideoMode] Checkbox changed for video ${videoId}:`, e.target.checked);
-            if (e.target.checked) {
-                this.selectedVideos.set(videoId, {
-                    title: this.extractVideoTitle(element),
-                    id: videoId
+            // Tracks list
+            if (tracks.length > 0) {
+                tracks.forEach(track => {
+                    const trackDiv = document.createElement('div');
+                    trackDiv.style.margin = '5px 0';
+                    trackDiv.innerHTML = `
+                        <label>
+                            <input type="checkbox" data-lang="${track.languageCode}">
+                            ${track.languageName}
+                        </label>
+                    `;
+                    content.appendChild(trackDiv);
                 });
             } else {
-                this.selectedVideos.delete(videoId);
+                const noSubs = document.createElement('p');
+                noSubs.style.color = '#c00';
+                noSubs.textContent = CONFIG.MESSAGES.NO_SUBTITLE;
+                content.appendChild(noSubs);
             }
-            console.debug(`[BulkVideoMode] Selected videos count:`, this.selectedVideos.size);
-        });
 
-        if (container.style.position !== 'relative') {
-            container.style.position = 'relative';
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;';
+
+            if (tracks.length > 0) {
+                const downloadBtn = document.createElement('button');
+                downloadBtn.textContent = 'Download Selected';
+                downloadBtn.onclick = onDownload;
+                actions.appendChild(downloadBtn);
+
+                const copyBtn = document.createElement('button');
+                copyBtn.textContent = 'Copy Selected';
+                copyBtn.onclick = onCopy;
+                actions.appendChild(copyBtn);
+            }
+
+            content.appendChild(actions);
+            return content;
         }
-
-        container.prepend(checkbox);
-        console.debug('[BulkVideoMode] Added checkbox to video:', videoId);
     }
 
-    async processSelectedVideos() {
-        const loading = UIComponents.showLoading('Fetching subtitles...');
+    // Video Selector with improved structure
+    class VideoSelector {
+        constructor() {
+            this.selectedVideos = new Map();
+            this.selectionActive = false;
+        }
 
-        try {
-            await Promise.all(
-                Array.from(this.selectedVideos.entries())
-                    .map(async ([videoId, data]) => {
+        toggleVideoSelection() {
+            if (!this.selectionActive) {
+                this.activateSelection();
+            } else {
+                this.deactivateSelection();
+            }
+        }
+
+        activateSelection() {
+            this.selectionActive = true;
+            this.selectedVideos.clear();
+            this.addSpacingStyle();
+
+            const videos = document.querySelectorAll(CONFIG.SELECTORS.VIDEO_ELEMENTS);
+            videos.forEach(video => {
+                // Skip shorts
+                if (video.closest('ytd-reel-shelf-renderer') ||
+                    video.closest('ytd-shorts') ||
+                    video.closest('ytm-shorts-lockup-view-model')) {
+                    return;
+                }
+
+                video.classList.add('yt-sub-video-padding');
+                this.addCheckbox(video);
+            });
+
+            this.addSelectionUI();
+        }
+
+        addSpacingStyle() {
+            if (!document.getElementById('yt-sub-styles')) {
+                const style = document.createElement('style');
+                style.id = 'yt-sub-styles';
+                style.textContent = `
+                    .yt-sub-video-padding {
+                        padding-left: 30px !important;
+                        position: relative !important;
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+        }
+
+        addCheckbox(videoElement) {
+            if (videoElement.querySelector('.yt-sub-checkbox-wrapper')) return;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'yt-sub-checkbox-wrapper';
+            wrapper.style.cssText = CONFIG.STYLES.CHECKBOX_WRAPPER;
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'yt-sub-checkbox';
+            checkbox.style.cssText = CONFIG.STYLES.CHECKBOX;
+
+            wrapper.appendChild(checkbox);
+            videoElement.insertBefore(wrapper, videoElement.firstChild);
+
+            checkbox.addEventListener('change', (e) => {
+                const videoId = this.extractVideoId(videoElement);
+                const title = this.extractTitle(videoElement);
+
+                if (videoId && title) {
+                    if (e.target.checked) {
+                        this.selectedVideos.set(videoId, { title });
+                    } else {
+                        this.selectedVideos.delete(videoId);
+                    }
+                    this.updateSelectionCount();
+                }
+            });
+        }
+
+        extractVideoId(video) {
+            const thumbnail = video.querySelector('a#thumbnail[href*="/watch?v="]');
+            if (thumbnail?.href) {
+                const url = new URL(thumbnail.href);
+                return url.searchParams.get('v');
+            }
+
+            const links = video.querySelectorAll('a[href*="/watch?v="]');
+            for (const link of links) {
+                try {
+                    const url = new URL(link.href);
+                    const videoId = url.searchParams.get('v');
+                    if (videoId) return videoId;
+                } catch {
+                    continue;
+                }
+            }
+            return null;
+        }
+
+        extractTitle(video) {
+            for (const selector of CONFIG.SELECTORS.TITLE_SELECTORS) {
+                const element = video.querySelector(selector);
+                if (element) {
+                    const title = element.textContent?.trim() ||
+                                element.getAttribute('title')?.trim();
+                    if (title) return title;
+                }
+            }
+
+            const videoId = this.extractVideoId(video);
+            return videoId ? `Video_${videoId}` : 'Untitled Video';
+        }
+
+        addSelectionUI() {
+            const ui = document.createElement('div');
+            ui.id = 'yt-sub-selection-ui';
+            ui.style.cssText = `
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 4px;
+                z-index: 9999;
+                font-size: 14px;
+            `;
+
+            ui.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    Selected: <span id="yt-sub-count">0</span> videos
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="yt-sub-download" style="background: #065fd4; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Download</button>
+                    <button id="yt-sub-cancel" style="background: #909090; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Cancel</button>
+                </div>
+            `;
+
+            document.body.appendChild(ui);
+
+            document.getElementById('yt-sub-download').onclick = () => {
+                if (this.selectedVideos.size > 0) {
+                    this.processSelectedVideos();
+                } else {
+                    UIComponents.showToast('Please select at least one video');
+                }
+            };
+
+            document.getElementById('yt-sub-cancel').onclick = () => {
+                this.deactivateSelection();
+            };
+        }
+
+        updateSelectionCount() {
+            const countElement = document.getElementById('yt-sub-count');
+            if (countElement) {
+                countElement.textContent = this.selectedVideos.size.toString();
+            }
+        }
+
+        deactivateSelection() {
+            this.selectionActive = false;
+            this.selectedVideos.clear();
+
+            document.querySelectorAll('.yt-sub-video-padding').forEach(video => {
+                video.classList.remove('yt-sub-video-padding');
+            });
+
+            document.querySelectorAll('.yt-sub-checkbox-wrapper').forEach(cb => cb.remove());
+            document.getElementById('yt-sub-selection-ui')?.remove();
+            document.getElementById('yt-sub-styles')?.remove();
+        }
+
+        async processSelectedVideos() {
+            if (this.selectedVideos.size === 0) {
+                UIComponents.showToast('Please select at least one video');
+                return;
+            }
+
+            const loading = UIComponents.showLoading('Fetching subtitles...');
+
+            try {
+                const videos = Array.from(this.selectedVideos.entries());
+                const results = await Promise.all(
+                    videos.map(async ([videoId, data]) => {
                         try {
-                            const tracks = await SubtitleProcessor.fetchSubtitleTracks(videoId);
-                            if (tracks) {
-                                this.selectedVideos.set(videoId, {
-                                    ...data,
-                                    subtitles: tracks
-                                });
-                            }
+                            const tracks = await SubtitleService.fetchSubtitleTracks(videoId);
+                            return { ...data, videoId, subtitles: tracks || [] };
                         } catch (error) {
-                            console.error(`Failed to fetch subtitles for video ${videoId}:`, error);
+                            console.error(`Failed to fetch subtitles for ${videoId}:`, error);
+                            return { ...data, videoId, subtitles: [] };
                         }
                     })
+                );
+
+                this.showSubtitleDialog(results);
+            } catch (error) {
+                UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
+                console.error('Failed to process videos:', error);
+            } finally {
+                loading.remove();
+            }
+        }
+
+        showSubtitleDialog(videos) {
+            const getSelectedTracks = () => {
+                return Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+                    .map(cb => {
+                        const videoId = cb.dataset.videoId;
+                        const langCode = cb.dataset.lang;
+                        const video = videos.find(v => v.videoId === videoId);
+                        const track = video?.subtitles.find(t => t.languageCode === langCode);
+                        return track ? { ...track, videoTitle: video.title } : null;
+                    })
+                    .filter(Boolean);
+            };
+
+            const content = document.createElement('div');
+
+            // Format selector
+            const formatDiv = document.createElement('div');
+            formatDiv.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <label style="margin-right: 10px;">
+                        <input type="radio" name="format" value="srt" checked> SRT
+                    </label>
+                    <label>
+                        <input type="radio" name="format" value="txt"> Plain Text
+                    </label>
+                </div>
+            `;
+            content.appendChild(formatDiv);
+
+            // Videos and their subtitles
+            videos.forEach(video => {
+                const videoDiv = document.createElement('div');
+                videoDiv.style.cssText = 'margin-bottom: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 4px;';
+
+                const title = document.createElement('h3');
+                title.style.margin = '0 0 10px 0';
+                title.textContent = video.title;
+                videoDiv.appendChild(title);
+
+                if (video.subtitles.length > 0) {
+                    video.subtitles.forEach(track => {
+                        const trackDiv = document.createElement('div');
+                        trackDiv.style.margin = '5px 0';
+                        trackDiv.innerHTML = `
+                            <label>
+                                <input type="checkbox"
+                                       data-video-id="${video.videoId}"
+                                       data-lang="${track.languageCode}">
+                                ${track.languageName}
+                            </label>
+                        `;
+                        videoDiv.appendChild(trackDiv);
+                    });
+                } else {
+                    const noSubs = document.createElement('p');
+                    noSubs.style.color = '#c00';
+                    noSubs.textContent = CONFIG.MESSAGES.NO_SUBTITLE;
+                    videoDiv.appendChild(noSubs);
+                }
+
+                content.appendChild(videoDiv);
+            });
+
+            // Action buttons
+            const actions = document.createElement('div');
+            actions.style.cssText = 'display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;';
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'Download Selected';
+            downloadBtn.onclick = async () => {
+                const tracks = getSelectedTracks();
+                const format = document.querySelector('input[name="format"]:checked').value;
+
+                if (tracks.length === 0) {
+                    UIComponents.showToast('Please select at least one subtitle');
+                    return;
+                }
+
+                try {
+                    const selectedTracks = tracks.map(track => ({
+                        ...track,
+                        baseUrl: track.baseUrl
+                    }));
+                    await SubtitleService.downloadSubtitles(selectedTracks, format);
+                    UIComponents.showToast('Download complete!');
+                } catch (error) {
+                    UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
+                    console.error('Download error:', error);
+                }
+            };
+            actions.appendChild(downloadBtn);
+
+            const copyBtn = document.createElement('button');
+            copyBtn.textContent = 'Copy Selected';
+            copyBtn.onclick = async () => {
+                const tracks = getSelectedTracks();
+                const format = document.querySelector('input[name="format"]:checked').value;
+
+                if (tracks.length === 0) {
+                    UIComponents.showToast('Please select at least one subtitle');
+                    return;
+                }
+
+                try {
+                    await SubtitleService.copySubtitles(tracks, format);
+                } catch (error) {
+                    UIComponents.showToast(CONFIG.MESSAGES.ERROR.COPY);
+                    console.error('Copy error:', error);
+                }
+            };
+            actions.appendChild(copyBtn);
+
+            content.appendChild(actions);
+
+            UIComponents.showDialog('Select Subtitles to Download', content, () => {
+                this.deactivateSelection();
+            });
+        }
+    }
+
+    // Single Video Downloader
+    class SingleVideoDownloader {
+        async downloadCurrentVideo() {
+            const videoId = this.getCurrentVideoId();
+            if (!videoId) {
+                UIComponents.showToast(CONFIG.MESSAGES.ERROR.NO_VIDEO);
+                return;
+            }
+
+            const loading = UIComponents.showLoading();
+
+            try {
+                const tracks = await SubtitleService.fetchSubtitleTracks(videoId);
+                if (!tracks?.length) {
+                    UIComponents.showToast(CONFIG.MESSAGES.NO_SUBTITLE);
+                    return;
+                }
+
+                const videoTitle = document.title.split(' - YouTube')[0] || `Video_${videoId}`;
+                this.showSubtitleDialog(tracks, videoTitle);
+            } catch (error) {
+                UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
+                console.error('Failed to fetch subtitles:', error);
+            } finally {
+                loading.remove();
+            }
+        }
+
+        getCurrentVideoId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('v');
+        }
+
+        showSubtitleDialog(tracks, videoTitle) {
+            const getSelectedTracks = () => {
+                return Array.from(document.querySelectorAll('input[type="checkbox"]:checked'))
+                    .map(cb => {
+                        const track = tracks.find(t => t.languageCode === cb.dataset.lang);
+                        return track ? { ...track, videoTitle } : null;
+                    })
+                    .filter(Boolean);
+            };
+
+            const content = UIComponents.createSubtitleDialog(
+                tracks,
+                CONFIG.FORMATS.SRT,
+                async () => {
+                    const selectedTracks = getSelectedTracks();
+                    const format = document.querySelector('input[name="format"]:checked').value;
+
+                    if (selectedTracks.length === 0) {
+                        UIComponents.showToast('Please select at least one subtitle');
+                        return;
+                    }
+
+                    try {
+                        const tracksWithTitle = selectedTracks.map(track => ({
+                            ...track,
+                            videoTitle
+                        }));
+                        await SubtitleService.downloadSubtitles(tracksWithTitle, format);
+                        UIComponents.showToast('Download complete!');
+                    } catch (error) {
+                        UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
+                        console.error('Download error:', error);
+                    }
+                },
+                async () => {
+                    const selectedTracks = getSelectedTracks();
+                    const format = document.querySelector('input[name="format"]:checked').value;
+
+                    if (selectedTracks.length === 0) {
+                        UIComponents.showToast('Please select at least one subtitle');
+                        return;
+                    }
+
+                    try {
+                        await SubtitleService.copySubtitles(selectedTracks, format, videoTitle);
+                    } catch (error) {
+                        UIComponents.showToast(CONFIG.MESSAGES.ERROR.COPY);
+                        console.error('Copy error:', error);
+                    }
+                }
             );
 
-            this.showBulkSubtitleDialog();
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
-            console.error('Failed to process videos:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
+            UIComponents.showDialog('Select Subtitles to Download', content);
         }
     }
 
-    showBulkSubtitleDialog() {
-        const content = document.createElement('div');
-        content.appendChild(this.createFormatSelector());
-
-        for (const [videoId, data] of this.selectedVideos) {
-            content.appendChild(this.createVideoSection(videoId, data));
+    // Main manager class
+    class YouTubeSubtitleManager {
+        constructor() {
+            this.singleMode = new SingleVideoDownloader();
+            this.bulkMode = new VideoSelector();
+            this.registerCommands();
+            this.setupNavigationHandler();
         }
 
-        content.appendChild(this.createActionButtons());
+        registerCommands() {
+            GM_registerMenuCommand('Download Current Video Subtitles',
+                () => this.singleMode.downloadCurrentVideo());
+            GM_registerMenuCommand('Select Videos for Subtitles',
+                () => this.bulkMode.toggleVideoSelection());
+        }
 
-        const dialog = UIComponents.createDialog({
-            title: 'Select Subtitles to Download',
-            content,
-            onClose: () => {
-                dialog.remove();
-                this.cleanup();
-                this.isSelectionMode = false;
-            }
-        });
-
-        document.body.appendChild(dialog);
-    }
-
-    createFormatSelector() {
-        const formatDiv = document.createElement('div');
-        formatDiv.style.marginBottom = '20px';
-        formatDiv.innerHTML = `
-            <div style="margin-bottom: 15px;">
-                <label style="margin-right: 10px;">
-                    <input type="radio" name="format" value="srt" checked> SRT
-                </label>
-                <label>
-                    <input type="radio" name="format" value="txt"> Plain Text
-                </label>
-            </div>
-        `;
-        return formatDiv;
-    }
-
-    createVideoSection(videoId, data) {
-        const section = document.createElement('div');
-        section.className = 'yt-sub-video-section';
-        section.style.cssText = `
-            margin-bottom: 20px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        `;
-
-        const title = document.createElement('h3');
-        title.style.margin = '0 0 10px 0';
-        title.textContent = data.title;
-        section.appendChild(title);
-
-        if (data.subtitles?.length) {
-            data.subtitles.forEach(track => {
-                const trackDiv = document.createElement('div');
-                trackDiv.className = 'yt-sub-track';
-                trackDiv.innerHTML = `
-                    <label>
-                        <input type="checkbox"
-                               data-video-id="${videoId}"
-                               data-lang="${track.languageCode}">
-                        ${track.languageName}
-                    </label>
-                `;
-                section.appendChild(trackDiv);
+        setupNavigationHandler() {
+            document.addEventListener('yt-navigate-finish', () => {
+                if (this.bulkMode.selectionActive) {
+                    this.bulkMode.deactivateSelection();
+                    this.bulkMode.activateSelection();
+                }
             });
-        } else {
-            const noSubs = document.createElement('p');
-            noSubs.style.color = '#c00';
-            noSubs.textContent = CONFIG.MESSAGES.NO_SUBTITLE;
-            section.appendChild(noSubs);
-        }
-
-        return section;
-    }
-
-    createActionButtons() {
-        const actions = document.createElement('div');
-        actions.style.cssText = `
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 20px;
-        `;
-
-        actions.appendChild(UIComponents.createButton(
-            'Download Selected',
-            () => this.handleBulkDownload()
-        ));
-        actions.appendChild(UIComponents.createButton(
-            'Copy Selected',
-            () => this.handleBulkCopy()
-        ));
-
-        return actions;
-    }
-
-    async handleBulkDownload() {
-        const tracks = this.getSelectedTracks();
-        const format = document.querySelector('input[name="format"]:checked').value;
-
-        if (!tracks.length) {
-            UIComponents.showToast('Please select at least one subtitle');
-            return;
-        }
-
-        const loading = UIComponents.showLoading('Downloading subtitles...');
-
-        try {
-            for (const track of tracks) {
-                const video = this.selectedVideos.get(track.videoId);
-                const subtitle = video.subtitles.find(s => s.languageCode === track.lang);
-
-                if (subtitle) {
-                    const content = await SubtitleProcessor.getSubtitleContent(subtitle, format);
-                    const filename = `${Utils.sanitizeFileName(video.title)}_${subtitle.languageCode}.${format}`;
-                    SubtitleProcessor.downloadSubtitle(content, filename);
-                    await new Promise(resolve => setTimeout(resolve, CONFIG.TIMINGS.DOWNLOAD_DELAY));
-                }
-            }
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.FETCH);
-            console.error('Bulk download error:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
         }
     }
 
-    async handleBulkCopy() {
-        const tracks = this.getSelectedTracks();
-        const format = document.querySelector('input[name="format"]:checked').value;
+    // Initialize the manager
+    new YouTubeSubtitleManager();
 
-        if (!tracks.length) {
-            UIComponents.showToast('Please select at least one subtitle');
-            return;
-        }
-
-        const loading = UIComponents.showLoading('Copying subtitles...');
-
-        try {
-            let content = '';
-            for (const track of tracks) {
-                const video = this.selectedVideos.get(track.videoId);
-                const subtitle = video.subtitles.find(s => s.languageCode === track.lang);
-
-                if (subtitle) {
-                    const subtitleContent = await SubtitleProcessor.getSubtitleContent(subtitle, format);
-                    content += `=== ${video.title} - ${subtitle.languageName} ===\n${subtitleContent}\n\n`;
-                }
-            }
-
-            await SubtitleProcessor.copyToClipboard(content);
-            UIComponents.showToast(CONFIG.MESSAGES.COPY_SUCCESS);
-        } catch (error) {
-            UIComponents.showToast(CONFIG.MESSAGES.ERROR.COPY);
-            console.error('Bulk copy error:', error);
-        } finally {
-            UIComponents.removeLoading(loading);
-        }
-    }
-
-    getSelectedTracks() {
-        return Array.from(document.querySelectorAll('.yt-sub-track input:checked'))
-            .map(checkbox => ({
-                videoId: checkbox.dataset.videoId,
-                lang: checkbox.dataset.lang
-            }));
-    }
-
-    extractVideoId(element) {
-        const link = element.querySelector(CONFIG.SELECTORS.THUMBNAIL);
-        if (!link?.href) return null;
-
-        const url = new URL(link.href);
-        return url.searchParams.get('v');
-    }
-
-    extractVideoTitle(element) {
-        return element.querySelector(CONFIG.SELECTORS.VIDEO_TITLE)?.textContent?.trim() || 'Untitled Video';
-    }
-
-    cleanup(fullCleanup = false) {
-        console.debug('[BulkVideoMode] Cleanup called. Full cleanup:', fullCleanup);
-
-        if (this.isProcessing) {
-            console.debug('[BulkVideoMode] Processing in progress, skipping cleanup');
-            return;
-        }
-
-        // Always clean up observers to prevent memory leaks
-        if (this.videoObserver) {
-            console.debug('[BulkVideoMode] Disconnecting observer');
-            this.videoObserver.disconnect();
-            this.videoObserver = null;
-        }
-
-        // Reset UI state without removing elements
-        if (this.selectionControls) {
-            console.debug('[BulkVideoMode] Resetting UI state');
-            this.selectionControls.button.textContent = 'Select Videos Sub';
-            this.selectionControls.selectAllContainer.style.display = 'none';
-            // Reset select all checkbox
-            const selectAllCheckbox = document.getElementById('select-all');
-            if (selectAllCheckbox) selectAllCheckbox.checked = false;
-        }
-
-        // Clean up video checkboxes
-        document.querySelectorAll('.yt-sub-checkbox').forEach(cb => {
-            const dismissible = cb.closest('#dismissible');
-            if (dismissible) dismissible.style.position = '';
-            cb.remove();
-        });
-
-        // Reset state
-        this.selectedVideos.clear();
-        this.isSelectionMode = false;
-
-        // Only if we're completely removing the feature (like when uninstalling)
-        if (fullCleanup && this.selectionControls) {
-            console.debug('[BulkVideoMode] Performing full cleanup (uninstall)');
-            this.selectionControls.button.remove();
-            this.selectionControls.selectAllContainer.remove();
-            this.selectionControls = null;
-            this.initialized = false;
-        }
-
-        console.debug('[BulkVideoMode] Cleanup complete');
-    }
-}
-    // Export to global scope
-    Object.assign(window.YTSubtitles, {
-        VideoManager,
-        SingleVideoMode,
-        BulkVideoMode
-    });
-})();
-
-(function() {
-    'use strict';
-
-    // Initialize video manager
-    window.YTSubtitles.activeManager = new window.YTSubtitles.VideoManager();
 })();
