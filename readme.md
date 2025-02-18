@@ -1,88 +1,138 @@
-# YouTube Smart Subtitle Downloader (Tampermonkey Version)
+# YouTube Smart Subtitle Downloader
 
-This is an enhanced userscript designed to run with **Tampermonkey** that allows you to easily download subtitles from YouTube videos, with a focus on smart selection and improved code structure.  It provides both single-video and bulk-download capabilities.
+A powerful and user-friendly browser userscript for downloading YouTube subtitles. This script allows you to download subtitles from single videos or bulk download from multiple videos at once.
 
 ## Features
 
-*   **Download subtitles in SRT or Plain Text:**  Supports both SRT and plain text formats.
-*   **Smart Language Selection:**  Select from available subtitle languages for each video.
-*   **Copy to Clipboard:**  Copy subtitle text directly to your clipboard.
-*   **Intuitive UI:** Integrates seamlessly with the YouTube interface.
-*   **Robust Dynamic Content Handling:**  Works reliably with YouTube's dynamic page loading.
-*   **Bulk Download:**  Select and download subtitles from multiple videos on search results, channel pages, playlists, home page, and more!
-*   **User-Friendly Menu Commands:** Access key features directly from the Tampermonkey menu.
-*    **Playlist Support:** download Subtitle from playlist.
+- 📝 Download subtitles from any YouTube video
+- 📦 Bulk download subtitles from multiple videos
+- 🔍 Smart video selection in playlists and search results
+- 💾 Multiple format support (SRT and plain text)
+- 📋 Copy subtitles to clipboard
+- 🌐 Support for all available subtitle languages
+- 🎯 Easy-to-use interface with visual feedback
+- ⚡ Efficient video processing with error handling
 
-## Installation (Tampermonkey)
+## Installation
 
-1.  **Install Tampermonkey:**
-    *   **Chrome:** [https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-    *   **Firefox:** [https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
-    *   **Edge:** [https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
-    *   **Safari:** [https://www.tampermonkey.net/](https://www.tampermonkey.net/) (Follow the instructions for Safari on the Tampermonkey website)
+1. First, install a userscript manager for your browser:
+   - [Tampermonkey](https://www.tampermonkey.net/) (Recommended)
+   - [Greasemonkey](https://addons.mozilla.org/en-US/firefox/addon/greasemonkey/)
+   - [Violentmonkey](https://violentmonkey.github.io/)
 
-2.  **Install the YouTube Smart Subtitle Downloader userscript:**
-    *   Click on this link to install the script directly:
+2. Click on the script's install link or copy the script code into your userscript manager.
 
-        ```
-        https://raw.githubusercontent.com/anassk01/youtube-subtitle-downloader/main/main.js
-        ```
-        (Make sure this points to the *raw* version of your `main.js` file on your `main` branch.)
-    *   **OR**
-    *   Click the Tampermonkey icon in your browser's toolbar.
-    *   Select "Create a new script..."
-    *   Copy the entire content of the `main.js` file.
-    *   Paste the code into the Tampermonkey editor.
-    *   Save the script (File > Save or Ctrl+S).
+3. The script will automatically run when you visit YouTube.
 
 ## Usage
 
 ### Single Video Download
+1. Navigate to any YouTube video
+2. Click on the Tampermonkey icon and select "Download Current Video Subtitles"
+3. Select the desired subtitle language(s) and format
+4. Click "Download Selected" or "Copy Selected"
 
-1.  Go to a YouTube video page.
-2.  Click the Tampermonkey icon in your browser toolbar.
-3.  Select "Download Current Video Subtitles" from the menu.
-4.  Choose the desired languages and format (SRT or Plain Text).
-5.  Click "Download Selected" or "Copy Selected".
+### Bulk Download
+1. Go to any YouTube page with multiple videos (playlist, channel, search results)
+2. Click on the Tampermonkey icon and select "Select Videos for Subtitles"
+3. Check the boxes next to the videos you want to download subtitles from
+4. Click the "Download" button in the top-right corner
+5. Select languages and format for each video
+6. Click "Download Selected" or "Copy Selected"
 
-### Bulk Video Download
+## Supported Formats
 
-1.  Go to a YouTube search results page, channel page, playlist, or the homepage.
-2.  Click the Tampermonkey icon in your browser toolbar.
-3.  Select "Select Videos for Subtitles" from the menu.
-4.  Checkboxes will appear next to each video.  Select the videos you want.
-5.  Click the "Download" button that appears in the top-right corner.
-6.  Select languages and format for each video in the dialog.
-7.  Click "Download Selected" or "Copy Selected".
+- **SRT**: Standard subtitle format with timing information
+- **Plain Text**: Simple text format with only the subtitle content
 
-## Important Notes (Tampermonkey)
+## Features in Detail
 
-*   **Permissions:** Ensure Tampermonkey has permission to access `*.youtube.com/*` websites.
-*   **Updates:** Tampermonkey should automatically check for updates.  To update manually:
-    1.  Go to the Tampermonkey dashboard.
-    2.  Find the script.
-    3.  Click "Edit".
-    4.  Replace the old code with the new code.
-    5.  Save.
+### Smart Video Selection
+- Automatically excludes YouTube Shorts
+- Works with different video layout types
+- Preserves selection state during page navigation
 
-## Limitations
+### UI Components
+- Loading indicators for feedback
+- Toast notifications for status updates
+- Modal dialogs for subtitle selection
+- Checkbox overlays for video selection
 
-*   **No VTT Support:**  Only SRT and Plain Text formats are supported.
+### Error Handling
+- Graceful handling of videos without subtitles
+- Network error recovery
+- Clear user feedback for all operations
 
-## Can it be a "Real" Extension?
+## Technical Details
 
-Yes!  Your userscript can be adapted into a standalone browser extension.  The main steps are:
+The script is built with modern JavaScript and includes:
+- Modular class-based architecture
+- Promise-based async operations
+- XML parsing for subtitle conversion
+- DOM manipulation for UI elements
 
-1.  **Create a `manifest.json`:** Describes your extension (name, permissions, etc.).
-2.  **Modify Code:**
-    *   Remove Tampermonkey-specific directives (e.g., `@grant`).
-    *   Replace Tampermonkey functions with browser extension API equivalents.
-3.  **Package and Distribute:** Package the extension and potentially publish it on extension stores.
+## Requirements
+
+- Modern web browser (Chrome, Firefox, Edge, etc.)
+- Userscript manager extension
+- Active internet connection
+- JavaScript enabled
+
+## Known Limitations
+
+- Cannot download auto-generated subtitles
+- May not work with embedded YouTube videos
+- Some subtitle formats may not preserve styling
+
+## Troubleshooting
+
+If you encounter issues:
+
+1. **Subtitles Not Loading**
+   - Ensure the video has subtitles available
+   - Check your internet connection
+   - Try refreshing the page
+
+2. **Download Not Working**
+   - Check browser download permissions
+   - Ensure you have selected at least one subtitle
+   - Try a different subtitle format
+
+3. **Selection Mode Issues**
+   - Refresh the page
+   - Disable and re-enable the script
+   - Check for conflicts with other YouTube scripts
 
 ## Contributing
 
-Contributions are welcome!  Fork the repository, make changes, and submit a pull request.
+Contributions are welcome! Please feel free to submit issues and pull requests.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE) (You should create a LICENSE file).
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Author
+
+anassk
+
+## Version History
+
+- 1.1: Enhanced code structure and improved error handling
+- 1.0: Initial release with basic functionality
+
+## Acknowledgments
+
+- Thanks to the YouTube API
+- Inspired by various subtitle download tools
+- Built with modern JavaScript practices
+
+## Support
+
+For support, please:
+1. Check the troubleshooting section
+2. Submit an issue on the project repository
+3. Contact the author through the userscript platform
+
+---
+
+Made with ❤️ for the YouTube community
